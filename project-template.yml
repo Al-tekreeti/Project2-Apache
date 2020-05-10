@@ -1,0 +1,164 @@
+Description:
+    Mustafa Al-tekreeti / Cloud DevOps NanoDegree - Project 2
+
+Parameters:
+# whatever you consider a changing value, put it as a parameter instead of hard-coding it into your script
+# ami-073e1a0657b5a8f7a
+# ami-069f29849e67a8815 (subscribe)
+# arn:aws:s3:::webcontentbucket
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+    VpcCIDR: 
+        Description: Please enter the IP range (CIDR notation) for this VPC
+        Type: String
+        Default: 10.0.0.0/16
+
+    PublicSubnetCIDR:
+        Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+        Type: String
+        Default: 10.0.0.0/24
+
+    KeyName: 
+        Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+        Type: AWS::EC2::KeyPair::KeyName
+        ConstraintDescription: must be the name of an existing EC2 KeyPair
+
+Resources:
+#instace profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
+    S3ReadOnlyEC2Role:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: 2012-10-17
+                Statement:
+                    Effect: Allow
+                    Principal:
+                        Service: ec2.amazonaws.com
+                    Action: 
+                        'sts:AssumeRole'
+            Path: /
+            Policies:
+                - PolicyName: S3ReadOnlyPolicy
+                  PolicyDocument:
+                      Version: 2012-10-17
+                      Statement:
+                          Effect: Allow
+                          Action: s3:GetObject*
+                          Resource: arn:aws:s3:::webcontentbucket/*
+
+    ProfileWithRolesForOurApp:
+        Type: AWS::IAM::InstanceProfile
+        Properties: 
+            Roles:
+                - !Ref S3ReadOnlyEC2Role
+
+    WebServerInstance: 
+        Type: AWS::EC2::Instance
+        Properties: 
+            ImageId: ami-073e1a0657b5a8f7a
+            InstanceType: t3.medium
+            SecurityGroupIds:
+                - !GetAtt WebServerSecGroup.GroupId
+            IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+            BlockDeviceMappings:
+                - DeviceName: "/dev/sdk"
+                  Ebs:
+                      VolumeSize: '10'
+            KeyName: !Ref KeyName
+            UserData:
+                Fn::Base64: !Sub |
+                    #!/bin/bash 
+                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
+                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install awscli unzip
+                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install apache2
+                    sudo systemctl start apache2.service
+                    sudo ufw allow 'Apache'
+                    cd /var/www/html
+                    sudo aws s3 cp s3://webcontentbucket/udacity-demo-1/udacity.zip .
+                    sudo unzip -oj udacity.zip
+            SubnetId: 
+                    Ref: "PublicSubnet"
+
+    VPC: 
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: !Ref VpcCIDR
+            EnableDnsHostnames: true
+            Tags: 
+                - Key: Name 
+                  Value: !Ref EnvironmentName
+            
+    InternetGateway:
+        Type: AWS::EC2::InternetGateway
+        Properties:
+            Tags:
+                - Key: Name
+                  Value: !Ref EnvironmentName
+            
+    InternetGatewayAttachment:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            InternetGatewayId: !Ref InternetGateway
+            VpcId: !Ref VPC
+
+    PublicSubnet: 
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref VPC
+            AvailabilityZone: !Select [ 0, !GetAZs '' ]
+            CidrBlock: !Ref PublicSubnetCIDR
+            MapPublicIpOnLaunch: true
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+    PublicRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref VPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Public Routes
+
+    DefaultPublicRoute: 
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties: 
+            RouteTableId: !Ref PublicRouteTable
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref InternetGateway
+
+    PublicSubnetRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PublicRouteTable
+            SubnetId: !Ref PublicSubnet
+
+    WebServerSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow http to our hosts and SSH from local only
+            VpcId: !Ref VPC
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: tcp
+                  FromPort: 22
+                  ToPort: 22
+                  CidrIp: 0.0.0.0/0
+            SecurityGroupEgress:
+                - IpProtocol: tcp
+                  FromPort: 0
+                  ToPort: 65535
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+
+#Outputs: 
+#Bonus points for useful outputs!
