@@ -8,4 +8,4 @@ First, you need to configure your machine to have access to an IAM user in AWS c
 
 <code>aws cloudformation create-stack --stack-name prod --template-body file://project-template.yaml  --parameters file://project-parameters.json --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM" --region=us-west-2</code>
 
-where `prod` is the name of the stack, `project-template.yaml` is the network infrastructure to be provisioned, and `project-parameters.json` is the parameters passed to project template, such as the CIDRs of the private subnets.
+where `prod` is the name of the stack, `project-template.yaml` is the network infrastructure to be provisioned, and `project-parameters.json` is the parameters passed to the project template, such as the CIDRs of the private subnets.
