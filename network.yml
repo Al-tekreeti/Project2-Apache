@@ -1,10 +1,8 @@
 Description:
-    Mustafa Al-tekreeti / Cloud DevOps NanoDegree - Project 2
+    Mustafa Al-tekreeti / network layer
 
 Parameters:
 # whatever you consider a changing value, put it as a parameter instead of hard-coding it into your script
-# ami-073e1a0657b5a8f7a
-# arn:aws:s3:::webcontentbucket
     EnvironmentName:
         Description: An environment name that will be prefixed to resource names
         Type: String
@@ -13,29 +11,38 @@ Parameters:
         Description: Please enter the IP range (CIDR notation) for this VPC
         Type: String
         Default: 10.0.0.0/16
+        AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+        ConstraintDescription: valid IP CIDR range of the form x.x.x.x/x
 
     PublicSubnet1CIDR:
         Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
         Type: String
         Default: 10.0.0.0/24
+        AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+        ConstraintDescription: valid IP CIDR range of the form x.x.x.x/x
     
     PublicSubnet2CIDR:
         Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
         Type: String
         Default: 10.0.1.0/24
+        AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+        ConstraintDescription: valid IP CIDR range of the form x.x.x.x/x
     
     PrivateSubnet1CIDR:
         Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
         Type: String
         Default: 10.0.2.0/24
+        AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+        ConstraintDescription: valid IP CIDR range of the form x.x.x.x/x
 
     PrivateSubnet2CIDR:
         Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
         Type: String
         Default: 10.0.3.0/24
+        AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+        ConstraintDescription: valid IP CIDR range of the form x.x.x.x/x
 
 Resources:
-#instace profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
     VPC: 
         Type: AWS::EC2::VPC
         Properties:
@@ -195,167 +202,34 @@ Resources:
         Properties:
             RouteTableId: !Ref PrivateRouteTable2
             SubnetId: !Ref PrivateSubnet2
-
-# The app template
-
-    S3ReadOnlyEC2Role:
-        Type: AWS::IAM::Role
-        Properties:
-            AssumeRolePolicyDocument:
-                Version: 2012-10-17
-                Statement:
-                    Effect: Allow
-                    Principal:
-                        Service: ec2.amazonaws.com
-                    Action: 
-                        'sts:AssumeRole'
-            Path: /
-            Policies:
-                - PolicyName: S3ReadOnlyPolicy
-                  PolicyDocument:
-                      Version: 2012-10-17
-                      Statement:
-                          Effect: Allow
-                          Action: s3:GetObject*
-                          Resource: arn:aws:s3:::webcontentbucket/*
-
-    ProfileWithRolesForOurApp:
-        Type: AWS::IAM::InstanceProfile
-        Properties: 
-            Roles:
-                - !Ref S3ReadOnlyEC2Role
-    
-    WebServerSecGroup:
-        Type: AWS::EC2::SecurityGroup
-        Properties:
-            GroupDescription: Allow http to our hosts and SSH from local only
-            VpcId: 
-                !Ref VPC
-            SecurityGroupIngress:
-                - IpProtocol: tcp
-                  FromPort: 80
-                  ToPort: 80
-                  CidrIp: 0.0.0.0/0
-                - IpProtocol: tcp
-                  FromPort: 22
-                  ToPort: 22
-                  CidrIp: 0.0.0.0/0
-            SecurityGroupEgress:
-                - IpProtocol: tcp
-                  FromPort: 0
-                  ToPort: 65535
-                  CidrIp: 0.0.0.0/0
-                - IpProtocol: tcp
-                  FromPort: 80
-                  ToPort: 80
-                  CidrIp: 0.0.0.0/0
-
-    WebAppLaunchConfig:
-        Type: AWS::AutoScaling::LaunchConfiguration
-        Properties:
-            UserData:
-                Fn::Base64: !Sub |
-                    #!/bin/bash 
-                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
-                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install awscli unzip
-                    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install apache2
-                    sudo systemctl start apache2.service
-                    sudo ufw allow 'Apache'
-                    cd /var/www/html
-                    sudo aws s3 cp s3://webcontentbucket/udacity-demo-1/udacity.zip .
-                    sudo unzip -oj udacity.zip
-            ImageId: ami-073e1a0657b5a8f7a
-            SecurityGroups:
-                - Ref: WebServerSecGroup
-            IamInstanceProfile: !Ref ProfileWithRolesForOurApp
-            InstanceType: t3.medium
-            BlockDeviceMappings:
-                - DeviceName: "/dev/sdk"
-                  Ebs:
-                      VolumeSize: '10'  
-
-    WebAppGroup:
-      Type: AWS::AutoScaling::AutoScalingGroup
-      Properties:
-          VPCZoneIdentifier: 
-              - !Ref PrivateSubnet1
-              - !Ref PrivateSubnet2
-          LaunchConfigurationName:
-              Ref: WebAppLaunchConfig
-          MinSize: '4'
-          MaxSize: '6'
-          TargetGroupARNs:
-              - Ref: WebAppTargetGroup
-
-    LBSecGroup:
-        Type: AWS::EC2::SecurityGroup
-        Properties:
-            GroupDescription: Allow http to our load balancer
-            VpcId: !Ref VPC
-            SecurityGroupIngress:
-                - IpProtocol: tcp
-                  FromPort: 80
-                  ToPort: 80
-                  CidrIp: 0.0.0.0/0
-            SecurityGroupEgress:
-                - IpProtocol: tcp
-                  FromPort: 80
-                  ToPort: 80
-                  CidrIp: 0.0.0.0/0
-
-    WebAppLB:
-        Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-        Properties:
-            Subnets:
-                - !Ref PublicSubnet1
-                - !Ref PublicSubnet2
-            SecurityGroups:
-                - Ref: LBSecGroup
-
-    Listener:
-        Type: AWS::ElasticLoadBalancingV2::Listener
-        Properties:
-            DefaultActions:
-                - Type: forward
-                  TargetGroupArn:
-                      Ref: WebAppTargetGroup
-            LoadBalancerArn:
-                Ref: WebAppLB
-            Port: '80'
-            Protocol: HTTP
-
-    ALBListenerRule:
-        Type: AWS::ElasticLoadBalancingV2::ListenerRule
-        Properties:
-            Actions:
-                - Type: forward
-                  TargetGroupArn: !Ref WebAppTargetGroup
-            Conditions:
-                - Field: path-pattern
-                  Values: [/]
-            ListenerArn: !Ref Listener
-            Priority: 1
-
-    WebAppTargetGroup:
-        Type: AWS::ElasticLoadBalancingV2::TargetGroup
-        Properties:
-            HealthCheckIntervalSeconds: 300
-            HealthCheckPath: /
-            HealthCheckProtocol: HTTP
-            HealthCheckTimeoutSeconds: 120
-            HealthyThresholdCount: 2
-            Port: 80
-            Protocol: HTTP
-            UnhealthyThresholdCount: 5
-            VpcId: !Ref VPC
-
 Outputs: 
-#Bonus points for useful outputs!
-    URL:
-        Value: !Join 
-          - ''
-          - - 'http://'
-            - !GetAtt 
-              - WebAppLB
-              - DNSName
-        Description: Newly created application URL
+
+    VPC: 
+        Description: A reference to the created VPC
+        Value: !Ref VPC
+        Export:
+          Name: !Sub ${EnvironmentName}-VPCID
+
+    PublicSubnet1:
+        Description: A reference to the public subnet in the 1st Availability Zone
+        Value: !Ref PublicSubnet1
+        Export:
+          Name: !Sub ${EnvironmentName}-PUB1-SN
+
+    PublicSubnet2: 
+        Description: A reference to the public subnet in the 2nd Availability Zone
+        Value: !Ref PublicSubnet2
+        Export:
+          Name: !Sub ${EnvironmentName}-PUB2-SN
+
+    PrivateSubnet1:
+        Description: A reference to the private subnet in the 1st Availability Zone
+        Value: !Ref PrivateSubnet1
+        Export:
+          Name: !Sub ${EnvironmentName}-PRI1-SN
+
+    PrivateSubnet2: 
+        Description: A reference to the private subnet in the 2nd Availability Zone
+        Value: !Ref PrivateSubnet2
+        Export:
+          Name: !Sub ${EnvironmentName}-PRI2-SN

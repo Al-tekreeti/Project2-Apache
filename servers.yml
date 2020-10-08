@@ -1,0 +1,180 @@
+Description:
+    Mustafa Al-tekreeti / servers layer
+
+Parameters:
+# ami-073e1a0657b5a8f7a
+# arn:aws:s3:::webcontentbucket
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+    
+    BucketName:
+        Description: The bucket name that holds the website files
+        Type: String
+        Default: webcontentbucket
+
+Resources:
+    S3ReadOnlyEC2Role:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: 2012-10-17
+                Statement:
+                    Effect: Allow
+                    Principal:
+                        Service: ec2.amazonaws.com
+                    Action: 
+                        'sts:AssumeRole'
+            Path: /
+            Policies:
+                - PolicyName: S3ReadOnlyPolicy
+                  PolicyDocument:
+                      Version: 2012-10-17
+                      Statement:
+                          Effect: Allow
+                          Action: s3:GetObject*
+                          Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+
+    ProfileWithRolesForOurApp:
+        Type: AWS::IAM::InstanceProfile
+        Properties: 
+            Roles:
+                - !Ref S3ReadOnlyEC2Role
+    
+    WebServerSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow http to our hosts and SSH from local only
+            VpcId: 
+                Fn::ImportValue:
+                    !Sub "${EnvironmentName}-VPCID"
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: tcp
+                  FromPort: 22
+                  ToPort: 22
+                  CidrIp: 0.0.0.0/0
+            SecurityGroupEgress:
+                - IpProtocol: tcp
+                  FromPort: 0
+                  ToPort: 65535
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+
+    WebAppLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+            UserData: !Base64 |
+                #!/bin/bash 
+                sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
+                sudo DEBIAN_FRONTEND=noninteractive apt-get -y install awscli
+                sudo DEBIAN_FRONTEND=noninteractive apt-get -y install apache2
+                sudo systemctl start apache2.service
+                sudo ufw allow 'Apache'
+                cd /var/www/html
+                sudo aws s3 cp s3://webcontentbucket/index.html
+            ImageId: ami-e24b7d9d
+            SecurityGroups:
+                - Ref: WebServerSecGroup
+            IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+            InstanceType: t3.medium
+            BlockDeviceMappings:
+                - DeviceName: "/dev/sdk"
+                  Ebs:
+                      VolumeSize: 10
+
+    WebAppGroup:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+          VPCZoneIdentifier: 
+              - Fn::ImportValue: !Sub "${EnvironmentName}-PRI1-SN"
+              - Fn::ImportValue: !Sub "${EnvironmentName}-PRI2-SN"
+          LaunchConfigurationName:
+              Ref: WebAppLaunchConfig
+          MinSize: '4'
+          MaxSize: '6'
+          TargetGroupARNs:
+              - Ref: WebAppTargetGroup
+
+    LBSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow http to our load balancer
+            VpcId: 
+                Fn::ImportValue:
+                    !Sub "${EnvironmentName}-VPCID"
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+            SecurityGroupEgress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+
+    WebAppLB:
+        Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+        Properties:
+            Subnets:
+                - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
+                - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
+            SecurityGroups:
+                - Ref: LBSecGroup
+
+    Listener:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+            DefaultActions:
+                - Type: forward
+                  TargetGroupArn:
+                      Ref: WebAppTargetGroup
+            LoadBalancerArn:
+                Ref: WebAppLB
+            Port: 80
+            Protocol: HTTP
+
+    ALBListenerRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Properties:
+            Actions:
+                - Type: forward
+                  TargetGroupArn: !Ref WebAppTargetGroup
+            Conditions:
+                - Field: path-pattern
+                  Values: [/]
+            ListenerArn: !Ref Listener
+            Priority: 1
+
+    WebAppTargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            HealthCheckIntervalSeconds: 300
+            HealthCheckPath: /
+            HealthCheckProtocol: HTTP
+            HealthCheckTimeoutSeconds: 120
+            HealthyThresholdCount: 2
+            Port: 80
+            Protocol: HTTP
+            UnhealthyThresholdCount: 5
+            VpcId: 
+                Fn::ImportValue:
+                    !Sub "${EnvironmentName}-VPCID"
+
+Outputs: 
+#Bonus points for useful outputs!
+    URL:
+        Value: !Join 
+          - ''
+          - - 'http://'
+            - !GetAtt 
+              - WebAppLB
+              - DNSName
+        Description: Newly created application URL
