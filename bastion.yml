@@ -12,6 +12,25 @@ Parameters:
         Type: String
     
 Resources:
+    BastionEC2Role:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: 2012-10-17
+                Statement:
+                    Effect: Allow
+                    Principal:
+                        Service: ec2.amazonaws.com
+                    Action: 
+                        'sts:AssumeRole'
+            Path: /
+
+    BastionProfile:
+        Type: AWS::IAM::InstanceProfile
+        Properties: 
+            Roles:
+                - !Ref BastionEC2Role
+
     WebServerSecGroup:
         Type: AWS::EC2::SecurityGroup
         Properties:
@@ -23,7 +42,7 @@ Resources:
                 - IpProtocol: tcp
                   FromPort: 22
                   ToPort: 22
-                  CidrIp: 0.0.0.0/0
+                  CidrIp: 74.15.241.40/32 # my local machine ip
                 - IpProtocol: icmp
                   FromPort: -1
                   ToPort: -1
@@ -36,12 +55,7 @@ Resources:
             InstanceType: t2.micro
             SecurityGroupIds:
                 - !GetAtt WebServerSecGroup.GroupId
-            IamInstanceProfile: 
-                Fn::ImportValue: !Sub "${EnvironmentName}-PROFILEID"
-            BlockDeviceMappings:
-                - DeviceName: "/dev/sdk"
-                  Ebs:
-                      VolumeSize: 10
+            IamInstanceProfile: !Ref BastionProfile
             KeyName: !Ref KeyName
             SubnetId: 
                     Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"

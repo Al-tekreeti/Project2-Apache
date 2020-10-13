@@ -61,7 +61,7 @@ Resources:
                 - IpProtocol: tcp
                   FromPort: 22
                   ToPort: 22
-                  CidrIp: 0.0.0.0/0
+                  CidrIp: 10.0.0.0/24 # ip range of public subnet1 (bastion ec2)
             SecurityGroupEgress:
                 - IpProtocol: tcp
                   FromPort: 0
@@ -183,9 +183,3 @@ Outputs:
             - !GetAtt 
               - WebAppLB
               - DNSName
-
-    ProfileWithRolesForOurApp:
-        Description: A reference to the created profile
-        Value: !Ref ProfileWithRolesForOurApp
-        Export:
-          Name: !Sub ${EnvironmentName}-PROFILEID
