@@ -203,7 +203,6 @@ Resources:
             RouteTableId: !Ref PrivateRouteTable2
             SubnetId: !Ref PrivateSubnet2
 Outputs: 
-
     VPC: 
         Description: A reference to the created VPC
         Value: !Ref VPC

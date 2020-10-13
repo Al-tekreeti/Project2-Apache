@@ -13,6 +13,11 @@ Parameters:
         Type: String
         Default: webcontentbucket
 
+    KeyName: 
+        Description: KeyPair to enable SSH access to the EC2 instance
+        Type: AWS::EC2::KeyPair::KeyName
+        ConstraintDescription: must be the name of an existing EC2 KeyPair
+
 Resources:
     S3ReadOnlyEC2Role:
         Type: AWS::IAM::Role
@@ -78,12 +83,13 @@ Resources:
                 sudo systemctl start apache2.service
                 sudo ufw allow 'Apache'
                 cd /var/www/html
-                sudo aws s3 cp s3://webcontentbucket/index.html
+                sudo aws s3 cp s3://webcontentbucket/index.html .
             ImageId: ami-e24b7d9d
             SecurityGroups:
                 - Ref: WebServerSecGroup
             IamInstanceProfile: !Ref ProfileWithRolesForOurApp
             InstanceType: t3.medium
+            KeyName: !Ref KeyName
             BlockDeviceMappings:
                 - DeviceName: "/dev/sdk"
                   Ebs:
@@ -169,12 +175,17 @@ Resources:
                     !Sub "${EnvironmentName}-VPCID"
 
 Outputs: 
-#Bonus points for useful outputs!
     URL:
+        Description: Newly created application URL
         Value: !Join 
           - ''
           - - 'http://'
             - !GetAtt 
               - WebAppLB
               - DNSName
-        Description: Newly created application URL
+
+    ProfileWithRolesForOurApp:
+        Description: A reference to the created profile
+        Value: !Ref ProfileWithRolesForOurApp
+        Export:
+          Name: !Sub ${EnvironmentName}-PROFILEID

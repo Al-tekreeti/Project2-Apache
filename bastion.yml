@@ -1,0 +1,48 @@
+Description:
+    Mustafa Al-tekreeti / bastion instance
+
+Parameters:
+    KeyName: 
+        Description: KeyPair to enable SSH access to the EC2 instance
+        Type: AWS::EC2::KeyPair::KeyName
+        ConstraintDescription: must be the name of an existing EC2 KeyPair
+
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+    
+Resources:
+    WebServerSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow http to our hosts and SSH from local only
+            VpcId: 
+                Fn::ImportValue:
+                    !Sub "${EnvironmentName}-VPCID"
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 22
+                  ToPort: 22
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: icmp
+                  FromPort: -1
+                  ToPort: -1
+                  CidrIp: 0.0.0.0/0
+
+    WebServerInstance: 
+        Type: AWS::EC2::Instance
+        Properties: 
+            ImageId: ami-e24b7d9d
+            InstanceType: t2.micro
+            SecurityGroupIds:
+                - !GetAtt WebServerSecGroup.GroupId
+            IamInstanceProfile: 
+                Fn::ImportValue: !Sub "${EnvironmentName}-PROFILEID"
+            BlockDeviceMappings:
+                - DeviceName: "/dev/sdk"
+                  Ebs:
+                      VolumeSize: 10
+            KeyName: !Ref KeyName
+            SubnetId: 
+                    Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
+    

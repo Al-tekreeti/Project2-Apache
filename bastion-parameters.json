@@ -3,10 +3,6 @@
 		"ParameterKey": "EnvironmentName",
 		"ParameterValue": "MyProject"
 	},
-	{
-		"ParameterKey": "BucketName",
-		"ParameterValue": "webcontentbucket"
-	},
     {
         "ParameterKey": "KeyName",
 		"ParameterValue": "id_rsa"
